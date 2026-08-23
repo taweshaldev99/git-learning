@@ -1,0 +1,168 @@
+# Deploying the Git Challenge Tracker to Cloudflare
+
+The tracker now has two ways to run:
+
+| | Local (`start-tracker.bat`) | Cloudflare (`tracker-worker/`) |
+|---|---|---|
+| Runtime | Node.js HTTP server | Cloudflare Worker |
+| Data | `data/db.json` | D1 database |
+| Lessons | read from `lessons/*.md` at request time | bundled into the Worker at build time |
+| Frontend | served from `tracker-backend/public` | same files, uploaded as Workers static assets |
+| Cost | free | free tier is enough |
+
+**Nothing about the local setup changed.** `start-tracker.bat` still works exactly as before. The Cloudflare build reads the *same* `lessons/` and the *same* `tracker-backend/public`, so a lesson edit ships to both.
+
+---
+
+## Why the first attempt failed
+
+Cloudflare does not run a Node process. It runs a V8 isolate that answers `fetch()` events, and that isolate has:
+
+- **no filesystem** — `fs.readFileSync`, `data/db.json`, `data/.secret`, `lessons/*.md` all fail
+- **no listening sockets** — `http.createServer(...).listen(5000)` has no meaning
+- **no `child_process` / `os`** — the browser-opener and the LAN-address banner cannot run
+- **no `crypto.scryptSync`** — Workers ship WebCrypto, which has no scrypt
+- **no shared memory between requests** — the `Map`-based rate limiters would reset constantly
+- **10ms of CPU per request on the Free plan** — expensive password hashing has to be tuned to fit
+
+`tracker-backend/server.js` uses all six. That is the restriction you hit — it was never a Cloudflare configuration problem. `tracker-worker/` is the same API rewritten against what the platform does offer.
+
+| Old | New |
+|---|---|
+| `data/db.json` | D1 tables `users`, `activities` |
+| `data/.secret` | `SESSION_SECRET` Worker secret |
+| `lessons/*.md` read per request | bundled into `src/lessons.generated.js` at build time |
+| `crypto.scryptSync` | PBKDF2-SHA256 via WebCrypto |
+| in-memory rate-limit `Map`s | D1 `throttle` table, swept hourly by a cron trigger |
+| `serveStatic()` + CSP header in code | Workers static assets + a generated `_headers` file |
+
+The API paths, request bodies, responses and the sequential lesson gating are unchanged, so `public/app.js` needed no edits at all.
+
+---
+
+## Deploy
+
+All commands run **inside `tracker-worker/`**.
+
+```bash
+cd tracker-worker
+npm install
+npx wrangler login
+```
+
+### 1. Create the database
+
+```bash
+npx wrangler d1 create git-challenge-tracker
+```
+
+It prints a `database_id`. Open [tracker-worker/wrangler.jsonc](tracker-worker/wrangler.jsonc) and paste it over `PASTE_YOUR_D1_DATABASE_ID_HERE`.
+
+Create the tables:
+
+```bash
+npm run db:init
+```
+
+### 2. Set the session secret
+
+This signs login tokens. Any long random string; losing it just signs everyone out.
+
+```bash
+npx wrangler secret put SESSION_SECRET
+```
+
+Generate one to paste in:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+```
+
+### 3. Deploy
+
+```bash
+npm run deploy
+```
+
+`npm run deploy` runs the build first, which regenerates `dist/public` and `src/lessons.generated.js`. **Always deploy through this script**, never bare `wrangler deploy`, or you ship stale lessons.
+
+You get a `https://git-challenge-tracker.<your-subdomain>.workers.dev` URL. Sign up there and confirm it works before attaching your domain.
+
+### 4. Your own domain
+
+Your domain must already be a zone in the same Cloudflare account (added at **Add a site**, with your registrar's nameservers pointed at Cloudflare).
+
+Then uncomment the `routes` block at the bottom of `wrangler.jsonc` and set your hostname:
+
+```jsonc
+"routes": [
+  { "pattern": "tracker.yourdomain.com", "custom_domain": true }
+]
+```
+
+```bash
+npm run deploy
+```
+
+`custom_domain: true` makes wrangler create the DNS record and the certificate for you. An apex domain (`yourdomain.com`) works the same way. First issue takes a few minutes.
+
+Dashboard alternative: **Workers & Pages → git-challenge-tracker → Settings → Domains & Routes → Add → Custom domain**.
+
+---
+
+## Bringing your existing progress across
+
+You have one real account in `data/db.json`. Progress migrates cleanly; the password cannot, because the stored hash is scrypt and Workers cannot compute scrypt.
+
+```bash
+node scripts/migrate-db.mjs
+npx wrangler d1 execute git-challenge-tracker --remote --file=./migrate.sql
+node scripts/set-password.mjs dev2sl.py@gmail.com "a password you choose"
+npx wrangler d1 execute git-challenge-tracker --remote --file=./set-password.sql
+rm set-password.sql migrate.sql
+```
+
+Delete `set-password.sql` when it has run — it is a live credential. Both files are git-ignored.
+
+The alternative, if you would rather start clean: skip this entirely and sign up again on the deployed site.
+
+---
+
+## Running it locally against the real Worker code
+
+```bash
+cp .dev.vars.example .dev.vars     # then edit SESSION_SECRET
+npm run db:init:local
+npm run dev
+```
+
+This is Cloudflare's own runtime with a local SQLite D1 — it catches platform problems that `node server.js` never would. Open http://127.0.0.1:8787.
+
+---
+
+## Things worth knowing
+
+**Free plan and password hashing.** The Free plan gives each request 10ms of CPU. Password hashing is the only thing in this app that gets near it, so `PBKDF2_ITERATIONS` ships at `25000` (~4ms measured). If signup or login ever returns "exceeded CPU time", lower it further. On the Workers Paid plan ($5/mo, 30s CPU) raise it to `210000` — each stored hash records its own round count, so old passwords keep working across the change.
+
+**Free tier limits.** 100k Worker requests/day, 5GB D1 storage, 5M D1 row reads/day. A 30-day course for a handful of people is nowhere near any of them.
+
+**Lessons stay private.** They are compiled into the Worker, not into `dist/public`, so the day-by-day unlock still holds — there is no URL that serves an unread lesson.
+
+**Editing content.** Change `lessons/*.md` or anything in `tracker-backend/public/`, then `npm run deploy`. Never edit `tracker-worker/dist/` or `src/lessons.generated.js`; both are wiped and rebuilt on every build.
+
+**Watching it run.** `npm run tail` streams live logs. D1 queries: `npx wrangler d1 execute git-challenge-tracker --remote --command "SELECT email, start_date FROM users"`.
+
+**Backups.** `npx wrangler d1 export git-challenge-tracker --remote --output backup.sql`.
+
+---
+
+## Troubleshooting
+
+| Symptom | Cause |
+|---|---|
+| `Couldn't find a D1 DB with the name or binding` | `database_id` in `wrangler.jsonc` is still the placeholder |
+| `server not configured: run npx wrangler secret put SESSION_SECRET` | secret not set for this Worker |
+| `no such table: users` | `npm run db:init` not run (or run against `--local` only) |
+| `Worker exceeded CPU time limit` on signup/login | lower `PBKDF2_ITERATIONS`, then redeploy |
+| Custom domain 522/pending | zone not active in this Cloudflare account yet, or certificate still issuing |
+| Old lesson text after a deploy | deployed with bare `wrangler deploy`; use `npm run deploy` |

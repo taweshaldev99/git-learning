@@ -1,0 +1,60 @@
+{
+  // Cloudflare Workers config for the Git Challenge Tracker.
+  // Run every command below from inside the tracker-worker/ folder.
+  //
+  //   npm install
+  //   npx wrangler d1 create git-challenge-tracker   -> paste database_id below
+  //   npm run db:init
+  //   npx wrangler secret put SESSION_SECRET
+  //   npm run deploy
+  //
+  // Full walkthrough: ../CLOUDFLARE-DEPLOY.md
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "git-challenge-tracker",
+  "main": "src/index.js",
+  "compatibility_date": "2025-04-01",
+
+  // The frontend. `npm run build` copies tracker-backend/public in here and
+  // adds a _headers file, so this folder is generated - never edit it by hand.
+  // A request that matches a file here is served straight from Cloudflare's
+  // edge and never reaches the Worker; everything else (all of /api/*) does.
+  "assets": {
+    "directory": "./dist/public",
+    "binding": "ASSETS"
+  },
+
+  // Replaces data/db.json. Create it with `npx wrangler d1 create
+  // git-challenge-tracker` and paste the printed id into database_id.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "git-challenge-tracker",
+      "database_id": "PASTE_YOUR_D1_DATABASE_ID_HERE"
+    }
+  ],
+
+  // Password hashing cost, in PBKDF2-SHA256 rounds. Only signup and login pay
+  // it - tokens last 30 days - but it is real CPU inside the request, and the
+  // Workers Free plan allows just 10ms of CPU per request. Measured: 25000
+  // rounds ~4ms, 100000 rounds ~18ms. So 25000 is the value that works on Free.
+  // On the Workers Paid plan ($5/mo, 30s CPU) raise this to "210000" - existing
+  // hashes store their own round count, so nobody gets locked out.
+  "vars": {
+    "PBKDF2_ITERATIONS": "25000"
+  },
+
+  // Hourly cleanup of expired rate-limit rows.
+  "triggers": {
+    "crons": ["17 * * * *"]
+  },
+
+  "observability": {
+    "enabled": true
+  }
+
+  // Your own domain. Add the zone to Cloudflare first, then uncomment and
+  // replace the hostname - wrangler creates the DNS record on deploy.
+  // "routes": [
+  //   { "pattern": "tracker.example.com", "custom_domain": true }
+  // ]
+}

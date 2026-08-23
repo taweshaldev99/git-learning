@@ -1,0 +1,20 @@
+{
+  "name": "git-challenge-tracker-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Cloudflare Workers deployment of the Git Challenge Tracker",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "npm run build && wrangler dev",
+    "deploy": "npm run build && wrangler deploy",
+    "db:init": "wrangler d1 execute git-challenge-tracker --remote --file=./schema.sql",
+    "db:init:local": "wrangler d1 execute git-challenge-tracker --local --file=./schema.sql",
+    "db:migrate": "node scripts/migrate-db.mjs",
+    "set-password": "node scripts/set-password.mjs",
+    "tail": "wrangler tail"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

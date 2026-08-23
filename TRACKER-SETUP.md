@@ -126,9 +126,12 @@ Zip the `D:\git_learning` folder **without the `data\` folder** (it contains pas
 hashes and the signing key — never share it) and send it. They unzip, install Node.js,
 and double-click `start-tracker.bat` for their own private copy.
 
-### Never the open internet
-No HTTPS and no password reset make this a trusted-network tool. Don't tunnel it
-through ngrok or similar.
+### Never the open internet — put it on Cloudflare instead
+This Node server has no HTTPS and no password reset, so don't tunnel it through
+ngrok or similar. To reach it from anywhere, deploy the Cloudflare Worker build in
+`tracker-worker\` — same app, same lessons, HTTPS and your own domain:
+[CLOUDFLARE-DEPLOY.md](CLOUDFLARE-DEPLOY.md). It runs alongside this local setup;
+neither one affects the other.
 
 ### Built-in protections
 - Wrong password 10× → that device is locked out of sign-in for 15 minutes.
@@ -198,4 +201,10 @@ D:\git_learning\
       curriculum.js              the 30-day plan
     test\render-test.js          run with: node test/render-test.js
   data\                          accounts + progress (created on first run)
+  CLOUDFLARE-DEPLOY.md           putting it online, with your own domain
+  tracker-worker\                Cloudflare Workers build of the same app
+    wrangler.jsonc               Cloudflare config (database id, domain, vars)
+    schema.sql                   D1 tables that replace data\db.json
+    src\index.js                 the same API, rewritten for the Workers runtime
+    scripts\                     build, db migration, password reset
 ```
