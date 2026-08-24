@@ -50,6 +50,16 @@ npm install
 npx wrangler login
 ```
 
+### Fast path — one command
+
+```powershell
+npm run setup
+```
+
+[scripts/setup-and-deploy.ps1](tracker-worker/scripts/setup-and-deploy.ps1) does steps 1–3 below in order and skips anything already done, so it is safe to re-run. It creates the D1 database, writes the real `database_id` into `wrangler.jsonc`, loads `schema.sql`, builds, deploys, then generates and stores `SESSION_SECRET`. It never touches the Git-connected dashboard project, so a wrong framework preset there cannot break it.
+
+Windows PowerShell. On any other OS, run the three steps below by hand — they are the same thing.
+
 ### 1. Create the database
 
 ```bash

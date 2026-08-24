@@ -5,6 +5,7 @@
   "type": "module",
   "description": "Cloudflare Workers deployment of the Git Challenge Tracker",
   "scripts": {
+    "setup": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-and-deploy.ps1",
     "build": "node scripts/build.mjs",
     "dev": "npm run build && wrangler dev",
     "deploy": "npm run build && wrangler deploy",
