@@ -43,6 +43,7 @@ local-api.js      the stand-in API
 app.js curriculum.js md.js styles.css fonts/
 lessons/day-01.md … day-30.md
 _headers          the same CSP the Node server sent
+404.html          so a bad URL reports a bad URL
 ```
 
 Everything is generated from `tracker-backend/public/` and `lessons/`, so editing a lesson and rebuilding ships it to all three ways of running the app.
@@ -61,6 +62,19 @@ npm run build
 Then in the Cloudflare dashboard: **Workers & Pages → Create → Pages → Upload assets**, name it `git-challenge-tracker`, and drag the whole `tracker-static/dist` folder in.
 
 That's it. No Git connection, no build command, no framework preset — none of the machinery that failed before is involved.
+
+### Or connect the Git repo
+
+**Workers & Pages → your project → Settings → Build**, with:
+
+| Field | Value |
+|---|---|
+| Framework preset | none |
+| Root directory | `tracker-static` |
+| Build command | `npm run build` |
+| Build output directory | `dist` |
+
+Every push to `main` then rebuilds and deploys on its own. Getting any of these wrong is what produces `Couldn't find any 'pages' or 'app' directory` — that error means the preset is still set to Next.js.
 
 ### Or from the command line
 

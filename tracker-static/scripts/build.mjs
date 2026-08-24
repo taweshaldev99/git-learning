@@ -108,5 +108,31 @@ fs.writeFileSync(
 `
 );
 
+/* --------------------------------- 404 ----------------------------------- */
+
+// Without this, Cloudflare Pages answers every unknown path with index.html and
+// a 200, so a typo silently boots the whole app instead of reporting a bad URL.
+fs.writeFileSync(
+  path.join(DIST, '404.html'),
+  `<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Not found — Git Challenge Tracker</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body style="display:grid;place-items:center;min-height:100vh;margin:0;text-align:center">
+  <div style="padding:32px">
+    <p style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-mute)">Error 404</p>
+    <h1 style="margin:8px 0 12px">That page does not exist</h1>
+    <p style="color:var(--text-mute);margin:0 0 24px">The tracker lives at the root of this site.</p>
+    <a href="/" style="color:var(--green)">Back to the tracker</a>
+  </div>
+</body>
+</html>
+`
+);
+
 console.log(`  lessons copied: ${copied}`);
 console.log(`  output:         ${path.relative(REPO, DIST)}`);
