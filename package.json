@@ -1,0 +1,12 @@
+{
+  "name": "git-challenge-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Git Challenge Tracker - 30-day curriculum, local Node server plus Cloudflare Worker deployment",
+  "scripts": {
+    "build": "npm --prefix tracker-worker install && npm --prefix tracker-worker run build",
+    "deploy": "npm --prefix tracker-worker install && npm --prefix tracker-worker run deploy",
+    "start": "node tracker-backend/server.js",
+    "test": "node tracker-backend/test/render-test.js"
+  }
+}

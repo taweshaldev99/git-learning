@@ -110,6 +110,41 @@ Dashboard alternative: **Workers & Pages → git-challenge-tracker → Settings 
 
 ---
 
+## Push-to-deploy from Git (optional)
+
+Skip this if `npm run deploy` from your own machine is enough. That path needs no dashboard settings at all and is the one to use if you just want the site up.
+
+If you connected the repo in the dashboard and the build died with:
+
+```
+Error: > Couldn't find any `pages` or `app` directory. Please create one under the project root
+```
+
+that is **Next.js** talking, not Cloudflare. The project was created with the **Next.js framework preset**, so the build runner executed `next build` at the repo root. There is no Next app in this repo and there never will be — nothing in the code is wrong. The project was created as the wrong type.
+
+**This repo is a Worker, not a Pages site.** Pages cannot host it as-is: it needs a D1 binding, a static-assets binding and a cron trigger, and [tracker-worker/wrangler.jsonc](tracker-worker/wrangler.jsonc) declares all three. Recreate it properly:
+
+1. Delete the broken project — **Workers & Pages → the project → Settings → Delete**.
+2. **Workers & Pages → Create → Workers → Import a repository**, and pick this repo.
+3. Where it offers a framework preset, choose **none**.
+4. Settings → **Build**:
+
+   | Field | Value |
+   |---|---|
+   | Framework preset | *(none)* |
+   | Root directory | `/tracker-worker` |
+   | Build command | `npm run build` |
+   | Deploy command | `npx wrangler deploy` |
+
+   The root [package.json](package.json) forwards both scripts into `tracker-worker/`, so leaving **Root directory** at `/` with the same two commands works as well.
+
+5. Settings → **Variables and Secrets** → add `SESSION_SECRET`, type **Secret**. The build runner cannot run `wrangler secret put` on your behalf.
+6. `database_id` in `wrangler.jsonc` has to be your real id **and committed**. Cloudflare builds the commit, so the placeholder fails there exactly as it does locally.
+
+After that, every push to `main` builds and deploys. The D1 database and the secret are account resources — they survive deleting and recreating the project, so steps 1–2 cost you no data.
+
+---
+
 ## Bringing your existing progress across
 
 You have one real account in `data/db.json`. Progress migrates cleanly; the password cannot, because the stored hash is scrypt and Workers cannot compute scrypt.
@@ -160,6 +195,8 @@ This is Cloudflare's own runtime with a local SQLite D1 — it catches platform 
 
 | Symptom | Cause |
 |---|---|
+| Dashboard build: `Couldn't find any pages or app directory` | project was created with the Next.js preset — recreate it as a Worker, see [Push-to-deploy from Git](#push-to-deploy-from-git-optional) |
+| Dashboard build: `next build` / `npm ci` runs at all | wrong root directory or a framework preset is still set |
 | `Couldn't find a D1 DB with the name or binding` | `database_id` in `wrangler.jsonc` is still the placeholder |
 | `server not configured: run npx wrangler secret put SESSION_SECRET` | secret not set for this Worker |
 | `no such table: users` | `npm run db:init` not run (or run against `--local` only) |
