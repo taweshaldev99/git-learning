@@ -6,6 +6,9 @@
   "scripts": {
     "build": "npm --prefix tracker-worker install && npm --prefix tracker-worker run build",
     "deploy": "npm --prefix tracker-worker install && npm --prefix tracker-worker run deploy",
+    "static:build": "npm --prefix tracker-static run build",
+    "static:dev": "npm --prefix tracker-static run dev",
+    "static:deploy": "npm --prefix tracker-static run deploy",
     "start": "node tracker-backend/server.js",
     "test": "node tracker-backend/test/render-test.js"
   }

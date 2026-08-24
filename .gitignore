@@ -9,3 +9,6 @@ tracker-worker/.wrangler/
 tracker-worker/migrate.sql
 tracker-worker/set-password.sql
 tracker-worker/.dev.vars
+
+# static build output
+tracker-static/dist/

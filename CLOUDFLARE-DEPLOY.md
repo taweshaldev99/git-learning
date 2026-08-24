@@ -1,5 +1,7 @@
 # Deploying the Git Challenge Tracker to Cloudflare
 
+> **Want the simplest possible deploy?** [CLOUDFLARE-STATIC.md](CLOUDFLARE-STATIC.md) puts the tracker on Cloudflare Pages as a folder of static files — no database, no secret, no build system involved, nothing to configure wrong. The catch is that progress lives in one browser and does not sync. Both routes are free; this one is the fuller product.
+
 The tracker now has two ways to run:
 
 | | Local (`start-tracker.bat`) | Cloudflare (`tracker-worker/`) |

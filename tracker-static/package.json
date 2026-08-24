@@ -1,0 +1,13 @@
+{
+  "name": "git-challenge-tracker-static",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Static (no-server) build of the Git Challenge Tracker for Cloudflare Pages",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "npm run build && node scripts/serve.mjs",
+    "create-project": "npx --yes wrangler pages project create git-challenge-tracker --production-branch=main",
+    "deploy": "npm run build && npx --yes wrangler pages deploy dist --project-name=git-challenge-tracker --commit-dirty=true"
+  }
+}
