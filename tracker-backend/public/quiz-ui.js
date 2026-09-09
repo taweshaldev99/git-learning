@@ -1,0 +1,66 @@
+(() => {
+  "use strict";
+  const STYLE_ID = "mcq-ui-style";
+  let mounted = false;
+
+  const esc = (v) => String(v ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  const token = () => localStorage.getItem("gct_token") || "";
+  const api = async (url, options = {}) => {
+    const res = await fetch(url, { ...options, headers: { Authorization: `Bearer ${token()}`, ...(options.body ? {"Content-Type":"application/json"} : {}) } });
+    const text = await res.text();
+    let data = {};
+    try { data = text ? JSON.parse(text) : {}; } catch { throw new Error("The server returned invalid JSON."); }
+    if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+    return data;
+  };
+
+  function styles() {
+    if (document.getElementById(STYLE_ID)) return;
+    const s = document.createElement("style");
+    s.id = STYLE_ID;
+    s.textContent = `.mcq-card .mcq-q{padding:18px 0;border-bottom:1px solid var(--border)}.mcq-card .mcq-q:first-child{padding-top:0}.mcq-card .mcq-q:last-child{border-bottom:0}.mcq-question{font-weight:650;line-height:1.55;margin-bottom:12px}.mcq-options{display:grid;gap:8px}.mcq-option{display:flex;align-items:flex-start;gap:10px;width:100%;text-align:left;padding:11px 13px;border:1px solid var(--border);border-radius:10px;background:var(--layer-2);color:var(--text);cursor:pointer}.mcq-option:hover{border-color:var(--text-mute)}.mcq-option.selected{border-color:var(--blue);background:var(--blue-soft)}.mcq-option input{margin-top:3px;accent-color:var(--blue)}.mcq-index{color:var(--text-mute);font-size:12px;margin-bottom:5px}.mcq-result{margin-top:14px;padding:12px 14px;border-radius:10px;background:var(--layer-2);font-size:13px;line-height:1.5}.mcq-result.pass{background:var(--green-soft)}.mcq-result.fail{background:var(--red-soft)}.mcq-explanation{margin-top:8px;color:var(--text-dim);font-size:12px}.mcq-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:16px}.mcq-gate{color:var(--text-mute);font-size:12px}.lesson-return{margin-top:18px;padding-top:16px;border-top:1px solid var(--border);display:flex}.lesson-return .btn-ghost{display:inline-flex;align-items:center;gap:7px}`;
+    document.head.appendChild(s);
+  }
+
+  function day() { return typeof store !== "undefined" && store.view === "today" ? Number(store.openDay || 0) : 0; }
+  function activity(d) { return typeof store !== "undefined" ? (store.activities?.[d] || {}) : {}; }
+  function progress(d) { const a=activity(d); return Math.round(["concept","walkthrough","exerciseA","exerciseB","exerciseC","challenge","reflection"].filter(k=>a.tasks?.[k]).length/7*100); }
+
+  function addBackButton(stack) {
+    if (stack.querySelector("[data-back-lesson]")) return;
+    const wrap=document.createElement("div"); wrap.className="lesson-return";
+    wrap.innerHTML=`<button type="button" class="btn-ghost" data-back-lesson>← Back to Lesson</button>`;
+    stack.appendChild(wrap);
+    wrap.firstElementChild.onclick=()=>{ store.dayTab="lesson"; render(); };
+  }
+
+  async function mountQuiz(d, stack) {
+    if (mounted) return;
+    mounted=true;
+    const card=document.createElement("div"); card.className="card mcq-card";
+    card.innerHTML=`<div class="card-head"><h2>Real-world knowledge check</h2><span class="aside">70% to pass</span></div><div class="card-body">Loading questions…</div>`;
+    stack.appendChild(card);
+    try {
+      const data=await api(`/api/quiz?day=${d}`); const qs=data.questions || []; const body=card.querySelector(".card-body");
+      body.innerHTML=`<p style="color:var(--text-dim);font-size:13px;margin-bottom:14px">Choose the best answer for each Git/GitHub situation. You need at least 70% correct and more than 70% practice progress to unlock the next lesson.</p><form class="mcq-form">${qs.map((q,i)=>`<div class="mcq-q"><div class="mcq-index">Question ${i+1} of ${qs.length}</div><div class="mcq-question">${esc(q.question)}</div><div class="mcq-options">${q.options.map((o,j)=>`<label class="mcq-option"><input type="radio" name="q${i}" value="${j}"><span>${esc(o)}</span></label>`).join("")}</div></div>`).join("")}<div class="mcq-actions"><button class="btn" type="submit">Submit answers</button><span class="mcq-gate">Progress: ${progress(d)}%</span></div><div class="mcq-result-wrap"></div></form>`;
+      body.querySelectorAll("input").forEach(input=>input.onchange=()=>body.querySelectorAll(`input[name="${input.name}"]`).forEach(i=>i.closest(".mcq-option")?.classList.toggle("selected",i.checked)));
+      body.querySelector("form").onsubmit=async e=>{
+        e.preventDefault(); const answers=qs.map((_,i)=>{const x=body.querySelector(`input[name="q${i}"]:checked`);return x?Number(x.value):null;});
+        if(answers.some(x=>x===null)){body.querySelector(".mcq-result-wrap").innerHTML='<div class="mcq-result fail">Answer all questions before submitting.</div>';return;}
+        const btn=body.querySelector("button[type=submit]"); btn.disabled=true; btn.textContent="Checking…";
+        try{const result=await api("/api/quiz/submit",{method:"POST",body:JSON.stringify({day:d,answers})}); store.activities[d]=result.activity; const unlocked=result.score>=70 && result.progressPct>70; body.querySelector(".mcq-result-wrap").innerHTML=`<div class="mcq-result ${unlocked?'pass':'fail'}" role="status"><b>${result.score}% — ${result.correct}/${result.total} correct</b><div>${unlocked?'Both requirements are satisfied. The next lesson is unlocked.':`Next lesson stays locked. Quiz: ${result.score}%, progress: ${result.progressPct}%. Required: quiz ≥70% and progress >70%.`}</div>${(result.review||[]).map((x,i)=>`<div class="mcq-explanation"><b>Q${i+1}:</b> ${esc(x)}</div>`).join("")}</div>`; if(typeof paintChrome==='function')paintChrome(); if(typeof render==='function')setTimeout(render,900);
+        }catch(err){body.querySelector(".mcq-result-wrap").innerHTML=`<div class="mcq-result fail" role="alert">${esc(err.message)}</div>`;btn.disabled=false;btn.textContent="Submit answers";}
+      };
+    } catch(err) { card.querySelector(".card-body").innerHTML=`<div class="alert" role="alert">${esc(err.message)}</div>`; }
+  }
+
+  function boot() {
+    styles(); const main=document.getElementById("main"); if(!main)return;
+    const observer=new MutationObserver(()=>{
+      if(typeof store==="undefined" || store.view!=="today" || store.dayTab!=="practice"){mounted=false;return;}
+      const stack=main.querySelector(".seg-btn[data-tab='practice']")?.closest(".seg")?.nextElementSibling?.querySelector(".col-stack"); if(!stack)return;
+      addBackButton(stack); if(!stack.querySelector(".mcq-card")) mountQuiz(day(),stack);
+    }); observer.observe(main,{childList:true,subtree:true});
+  }
+  if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",boot,{once:true});else boot();
+})();
